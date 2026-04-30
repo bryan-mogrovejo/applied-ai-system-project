@@ -1,0 +1,40 @@
+flowchart TB
+    User([Pet owner]) --> UI[Streamlit UI<br/>app.py]
+
+    UI --> Sched[Rule-based Scheduler<br/>pawpal_system.py]
+    UI --> Pipeline[RAG Pipeline<br/>rag/pipeline.py]
+
+    Sched -->|sorted, prioritized<br/>schedule| UI
+    Sched -.->|schedule passed<br/>to RAG| Pipeline
+
+    subgraph RAG[RAG layer]
+        direction TB
+        Pipeline --> Validator[Input validator<br/>length + emptiness]
+        Validator --> Embedder[Local Embedder<br/>sentence-transformers<br/>all-MiniLM-L6-v2]
+        Embedder --> Retriever[Cosine top-k Retriever]
+        Retriever --> KB[(Knowledge Base<br/>13 markdown docs<br/>~62 chunks)]
+        Retriever --> Generator[Gemini 2.0 Flash<br/>grounded generation]
+        Generator --> Confidence[Confidence Scorer<br/>from retrieval similarity]
+    end
+
+    Pipeline -->|answer + citations<br/>+ confidence| UI
+    Pipeline --> Logger[(JSONL log<br/>logs/rag.jsonl)]
+
+    subgraph Tests[Reliability layer]
+        direction LR
+        UnitTests[Unit tests<br/>test_retriever.py<br/>test_pipeline.py]
+        Eval[Evaluation suite<br/>test_evaluation.py<br/>10 golden Q&A]
+        ExistingTests[Scheduler tests<br/>test_pawpal.py]
+    end
+
+    Pipeline -.->|tested by| Tests
+
+    UI --> Output([Schedule + answers<br/>+ confidence + citations])
+
+    classDef existing fill:#e1f5e1,stroke:#2d6a2d
+    classDef new fill:#e1eafd,stroke:#2d4a8d
+    classDef store fill:#fdf3e1,stroke:#8d6a2d
+
+    class Sched,ExistingTests existing
+    class Pipeline,Validator,Embedder,Retriever,Generator,Confidence,UnitTests,Eval new
+    class KB,Logger store

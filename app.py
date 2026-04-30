@@ -2,7 +2,12 @@
 
 import streamlit as st
 from datetime import date
+from dotenv import load_dotenv
+
 from pawpal_system import Owner, Pet, Task, Scheduler
+from rag.pipeline import RAGPipeline, RAGResponse
+
+load_dotenv()
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -11,6 +16,45 @@ if "owner" not in st.session_state:
     st.session_state.owner = None
 if "scheduler" not in st.session_state:
     st.session_state.scheduler = None
+if "schedule_explanation" not in st.session_state:
+    st.session_state.schedule_explanation = None
+if "ask_history" not in st.session_state:
+    st.session_state.ask_history = []  # list[(question, RAGResponse)]
+
+
+# ── RAG pipeline (cached so the model only loads once per session) ──────────
+@st.cache_resource(show_spinner="Loading PawPal's pet-care knowledge base...")
+def get_rag_pipeline() -> RAGPipeline | None:
+    """Build the RAG pipeline once. Returns None if setup fails."""
+    try:
+        return RAGPipeline()
+    except Exception as e:
+        st.session_state["rag_error"] = str(e)
+        return None
+
+
+def render_rag_response(response: RAGResponse) -> None:
+    """Display a RAG answer with its confidence badge and source list."""
+    conf = response.confidence
+    if conf.label == "high":
+        st.success(f"🟢 {conf.display()} — {conf.reasoning}")
+    elif conf.label == "medium":
+        st.info(f"🟡 {conf.display()} — {conf.reasoning}")
+    else:
+        st.warning(f"🟠 {conf.display()} — {conf.reasoning}")
+
+    st.markdown(response.answer)
+
+    if response.retrieval:
+        with st.expander("Retrieved sources", expanded=False):
+            for r in response.retrieval:
+                st.markdown(
+                    f"- **{r.document.citation()}** "
+                    f"_(similarity {r.score:.2f})_"
+                )
+
+    if response.error:
+        st.error(f"⚠ Error: {response.error}")
 
 # ── Header ───────────────────────────────────────────────────────────────────
 st.title("🐾 PawPal+")
@@ -120,6 +164,31 @@ else:
         }, inplace=True)
         df["Done"] = df["Done"].map({True: "✓", False: "○"})
         st.dataframe(df, use_container_width=True, hide_index=True)
+
+        # ── Explain this schedule (RAG) ──────────────────────────────────
+        col_a, col_b = st.columns([1, 3])
+        with col_a:
+            explain_clicked = st.button("🤖 Explain this schedule", use_container_width=True)
+        with col_b:
+            if st.session_state.schedule_explanation is not None:
+                if st.button("Clear explanation", use_container_width=True):
+                    st.session_state.schedule_explanation = None
+                    st.rerun()
+
+        if explain_clicked:
+            pipeline = get_rag_pipeline()
+            if pipeline is None:
+                st.error(
+                    "RAG pipeline unavailable. Make sure GEMINI_API_KEY is set "
+                    "in your .env file. See .env.example for a template."
+                )
+            else:
+                with st.spinner("PawPal is reasoning about your schedule..."):
+                    st.session_state.schedule_explanation = pipeline.explain_schedule(schedule)
+
+        if st.session_state.schedule_explanation is not None:
+            st.markdown("##### 🐾 PawPal's take")
+            render_rag_response(st.session_state.schedule_explanation)
     else:
         st.info("No tasks scheduled yet.")
 
@@ -173,3 +242,43 @@ with st.expander("🔍  Filter Tasks"):
             )
     else:
         st.info("No tasks match this filter.")
+
+# ── Step 7: Ask PawPal (RAG Q&A) ──────────────────────────────────────────────
+st.divider()
+st.subheader("💬 Ask PawPal")
+st.caption(
+    "Ask any pet-care question. PawPal retrieves relevant passages from its "
+    "knowledge base and answers using only those sources."
+)
+
+with st.form("ask_form", clear_on_submit=False):
+    question = st.text_input(
+        "Your question",
+        placeholder="e.g. How often should I bathe a Maltese?",
+        key="ask_question",
+    )
+    submitted = st.form_submit_button("Ask")
+
+if submitted and question.strip():
+    pipeline = get_rag_pipeline()
+    if pipeline is None:
+        st.error(
+            "RAG pipeline unavailable. Make sure GEMINI_API_KEY is set in your "
+            ".env file. See .env.example for a template."
+        )
+    else:
+        with st.spinner("Retrieving sources and generating answer..."):
+            response = pipeline.ask(question)
+        st.session_state.ask_history.insert(0, (question, response))
+
+if st.session_state.ask_history:
+    st.markdown("---")
+    for i, (q, resp) in enumerate(st.session_state.ask_history[:5]):
+        st.markdown(f"**Q:** {q}")
+        render_rag_response(resp)
+        if i < min(len(st.session_state.ask_history), 5) - 1:
+            st.markdown("---")
+    if len(st.session_state.ask_history) > 5:
+        st.caption(
+            f"Showing 5 most recent of {len(st.session_state.ask_history)} questions."
+        )
