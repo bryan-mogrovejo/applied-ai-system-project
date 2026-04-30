@@ -6,7 +6,7 @@ schedule **plus** the ability to ask grounded pet-care questions and have
 their schedule explained — all powered by a local vector index over a
 curated knowledge base and a free-tier Gemini LLM.
 
-> **Loom walkthrough:** _coming — link will go here once recorded._
+> **Loom walkthrough:** <https://www.loom.com/share/63f2d22748ef4b9a99801f2bf2cb8100>
 
 ---
 
