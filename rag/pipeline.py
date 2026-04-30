@@ -131,7 +131,12 @@ class RAGPipeline:
         start = time.perf_counter()
         results = self.retriever.retrieve(question, k=self.top_k)
         confidence = score_retrieval(results)
-        contexts = [r.document.text for r in results]
+        contexts = [
+            f"Source: {r.document.source}\n"
+            f"Section: {r.document.section or '(intro)'}\n\n"
+            f"{r.document.text}"
+            for r in results
+        ]
         citations = sorted({r.document.source for r in results})
 
         try:
@@ -185,7 +190,12 @@ class RAGPipeline:
         )
         results = self.retriever.retrieve(retrieval_query, k=self.top_k)
         confidence = score_retrieval(results)
-        contexts = [r.document.text for r in results]
+        contexts = [
+            f"Source: {r.document.source}\n"
+            f"Section: {r.document.section or '(intro)'}\n\n"
+            f"{r.document.text}"
+            for r in results
+        ]
         citations = sorted({r.document.source for r in results})
 
         try:

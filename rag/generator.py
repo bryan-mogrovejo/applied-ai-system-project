@@ -42,13 +42,13 @@ class Generator:
     """Thin wrapper around the Gemini API.
 
     The API key is read from GEMINI_API_KEY at construction time. The
-    model name defaults to gemini-2.0-flash, which is on Google's free
+    model name defaults to gemini-flash-latest, which is on Google's free
     tier as of writing.
     """
 
     def __init__(
         self,
-        model_name: str = "gemini-2.0-flash",
+        model_name: str = "gemini-flash-latest",
         api_key: str | None = None,
     ):
         key = api_key or os.environ.get("GEMINI_API_KEY")
